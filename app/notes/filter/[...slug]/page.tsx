@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
 import { fetchNotes } from "@/lib/api";
 import NotesClient from "./Notes.client";
+import {
+  HydrationBoundary,
+  dehydrate,
+  QueryClient,
+} from "@tanstack/react-query";
 
 type Props = {
   params: Promise<{ slug?: string[] }>;
@@ -23,7 +28,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       url: `https://notehub.com/notes/filter/${tag.toLowerCase()}`,
       images: [
         {
-          url: `https://ac.goit.global/fullstack/react/notehub-og-meta.jpg`,
+          url: "https://ac.goit.global/fullstack/react/notehub-og-meta.jpg",
           width: 1200,
           height: 630,
           alt: "Notes preview",
@@ -34,23 +39,28 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function NotesSlugPage({ params }: Props) {
-  const slug = (await params).slug || []; // check (await params)
-  let tag: string | undefined = undefined;
+  const slug = (await params).slug || [];
 
-  if (slug.length > 0 && slug[0].toLowerCase() !== "all") {
-    tag = slug[0];
-  }
+  const tag =
+    slug.length > 0 && slug[0].toLowerCase() !== "all" ? slug[0] : "All";
 
-  try {
-    const data = await fetchNotes({ tag: tag });
+  const queryClient = new QueryClient();
 
-    return <NotesClient initialData={data} tag={tag} />;
-  } catch (error) {
-    console.log("Error fetching notes:", error);
-    return (
-      <div>
-        <p>Something went wrong while fetching the notes.</p>
-      </div>
-    );
-  }
+  await queryClient.prefetchQuery({
+    queryKey: ["notes", tag, "", 1],
+    queryFn: () =>
+      fetchNotes({
+        page: 1,
+        search: "",
+        tag: tag === "All" ? undefined : tag,
+      }),
+  });
+
+  const dehydratedState = dehydrate(queryClient);
+
+  return (
+    <HydrationBoundary state={dehydratedState}>
+      <NotesClient tag={tag} />
+    </HydrationBoundary>
+  );
 }
